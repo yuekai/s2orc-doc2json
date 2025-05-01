@@ -8,8 +8,7 @@ from typing import Optional, Dict
 from doc2json.grobid2json.grobid.grobid_client import GrobidClient
 from doc2json.grobid2json.tei_to_json import convert_tei_xml_file_to_s2orc_json, convert_tei_xml_soup_to_s2orc_json
 
-BASE_TEMP_DIR = 'temp'
-BASE_OUTPUT_DIR = 'output'
+BASE_TEMP_DIR = 'tmp'
 BASE_LOG_DIR = 'log'
 
 
@@ -36,8 +35,8 @@ def process_pdf_stream(input_file: str, sha: str, input_stream: bytes, grobid_co
 
 def process_pdf_file(
         input_file: str,
-        temp_dir: str = BASE_TEMP_DIR,
-        output_dir: str = BASE_OUTPUT_DIR,
+        temp_dir: str = None,
+        output_dir: str = None,
         grobid_config: Optional[Dict] = None
 ) -> str:
     """
@@ -47,8 +46,15 @@ def process_pdf_file(
     :param output_dir:
     :return:
     """
-    os.makedirs(temp_dir, exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
+    if temp_dir is None:
+        temp_dir = os.path.join(os.path.dirname(input_file), BASE_TEMP_DIR)
+    else:
+        os.makedirs(temp_dir, exist_ok=True)
+
+    if output_dir is None:
+        output_dir = os.path.dirname(input_file)
+    else:
+        os.makedirs(output_dir, exist_ok=True)
 
     # get paper id as the name of the file
     paper_id = '.'.join(input_file.split('/')[-1].split('.')[:-1])
@@ -78,26 +84,59 @@ def process_pdf_file(
     return output_file
 
 
+def process_dir(
+        input_dir: str,
+        tmp_dir: str = None,
+        out_dir: str = None,
+        grobid_config: Optional[Dict] = None
+) -> str:
+    """
+    Process PDF files in a directory
+    
+    Args:
+        input_dir: Directory containing PDF files to process
+        tmp_dir: Temporary directory for processing. Defaults to input_dir + 'tmp/'
+        out_dir: Output directory for processed files. Defaults to input_dir + 'out/'
+        grobid_config: Optional configuration for GROBID
+    """
+    # Set default values for tmp_dir and out_dir if not provided
+    if tmp_dir is None:
+        tmp_dir = os.path.join(input_dir, "tmp/")
+    if out_dir is None:
+        out_dir = input_dir
+
+    # Create temporary and output directories if they don't exist
+    os.makedirs(tmp_dir, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
+
+    # Loop through files in input_dir
+    for filename in os.listdir(input_dir):
+        file_path = os.path.join(input_dir, filename)
+        # Check if the item is a file and a PDF
+        if os.path.isfile(file_path) and filename.lower().endswith('.pdf'):
+            # Call process_pdf_file for each PDF
+            process_pdf_file(file_path, tmp_dir, out_dir, grobid_config)
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run S2ORC PDF2JSON")
     parser.add_argument("-i", "--input", default=None, help="path to the input PDF file")
-    parser.add_argument("-t", "--temp", default=BASE_TEMP_DIR, help="path to the temp dir for putting tei xml files")
-    parser.add_argument("-o", "--output", default=BASE_OUTPUT_DIR, help="path to the output dir for putting json files")
-    parser.add_argument("-k", "--keep", action='store_true')
+    parser.add_argument("-t", "--temp", default=None, help="path to the temp dir for putting tei xml files")
+    parser.add_argument("-o", "--output", default=None, help="path to the output dir for putting json files")
 
     args = parser.parse_args()
 
     input_path = args.input
     temp_path = args.temp
     output_path = args.output
-    keep_temp = args.keep
 
     start_time = time.time()
 
-    os.makedirs(temp_path, exist_ok=True)
-    os.makedirs(output_path, exist_ok=True)
-
-    process_pdf_file(input_path, temp_path, output_path)
+    if os.path.isdir(input_path):
+        # process all pdf files in the directory
+        process_dir(input_path)
+    elif os.path.isfile(input_path):
+      process_pdf_file(input_path, temp_path, output_path)
 
     runtime = round(time.time() - start_time, 3)
     print("runtime: %s seconds " % (runtime))
